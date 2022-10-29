@@ -1,0 +1,166 @@
+<h4 id="note">Note</h4>
+<p>This article covers three possible fixes - global NixOs configurations, and <code class="language-plaintext highlighter-rouge">nix-shell</code> configs, and the newer <code class="language-plaintext highlighter-rouge">nix develop</code> configuration (a blog post coming soon about that soon).</p>
+
+<h3 id="overview">Overview</h3>
+<p>For those of us who use NixOs, the Linux distribution, the draw is simple, repeatable, straightforward OS configuration. Simply clone your configuration, run <code class="language-plaintext highlighter-rouge">nixos-install</code>, and you are right at home - no fiddling around with .config files hoping you remember everything (or hacky scripts to copy all your files for you, as I am guilty of).</p>
+
+<p>This is great for almost any program. Did the latest version of the battery manager break your power button? (true story) No problem, simply rollback the file version in your <code class="language-plaintext highlighter-rouge">.nix</code> file.</p>
+
+<p>But this power comes at a cost; what happens when two pieces of software meant to manage software versions try to manage the same package?</p>
+
+<p>Enter <code class="language-plaintext highlighter-rouge">rustup</code> vs <code class="language-plaintext highlighter-rouge">NixOs</code>. If you are here, you probably already know that Rust (the programming language, not the game) comes with <code class="language-plaintext highlighter-rouge">rustup</code> to manage toolchain versions - <code class="language-plaintext highlighter-rouge">rustc</code> to compile, the amazing <code class="language-plaintext highlighter-rouge">cargo</code> utility to manage packages, <code class="language-plaintext highlighter-rouge">rustfmt</code> for standardized formatting, etc. Very similarly to the way NixOs handles program files.</p>
+
+<p>While NixOs can install <code class="language-plaintext highlighter-rouge">cargo</code>/<code class="language-plaintext highlighter-rouge">rustc</code> and they will coexist peacefully, it is more of an fragile armistice than a happy working relationship.</p>
+
+<p>This means you certainly could install rust and <code class="language-plaintext highlighter-rouge">cargo</code> globally and compile your projects to your hearts content without <em>too</em> much hassle, once you try and use rust-analyzer, you find things start to break down.</p>
+
+<p>Rust-analyzer, the de-facto rust language server used in IDEs from VSCode to VIM, requires <code class="language-plaintext highlighter-rouge">rust-src</code> to be installed - the rust source code it checks your code against. However, this package isn’t installed alongside <code class="language-plaintext highlighter-rouge">rustc</code> and <code class="language-plaintext highlighter-rouge">cargo</code> when NixOs installs it, in fact, much of the rust toolchain isn’t available in the default NixOs packages.</p>
+
+<p>Enter Nix’s answer to problems like these - overlays.</p>
+
+<p>While you do not need to know what an overlay is to use these, it is helpful to understand how they work <a href="www.something.com">read more here</a>.</p>
+
+<h3 id="nixos">NixOs</h3>
+<p>If you are reading this section, you already have your configuration files set up, and are almost definetly familiar with overlays. <a href="https://github.com/oxalica/rust-overlay">The Github README</a> has more in-depth instructions, but I’ll past the relevant information here:</p>
+<pre><code class="language-Nix"># &lt;configuration.nix&gt;, &lt;flake.nix&gt; or equivalent
+inputs = {
+	nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+	rust-overlay.url = "github:oxalica/rust-overlay";
+}
+
+outputs = { nixpkgs, rust-overlay, ... }: {
+	nixosConfigurations = {
+		hostname ... {
+			system ...
+			modules = [
+				...
+				({ pkgs, ... }: {
+					nixpkgs.overlays = [ rust-overlay.overlays.default ];
+					environment.systemPackages = [ pkgs.rust-bin.stable.latest.default ]; # install the latest stable rust default toolchain
+				})
+			];
+		};
+	};
+}
+</code></pre>
+
+<h3 id="nix-develop">Nix Develop</h3>
+<p>For those of you familiar with <code class="language-plaintext highlighter-rouge">nix-shell</code>, <code class="language-plaintext highlighter-rouge">nix develop</code> won’t be that new to you. There is an ongoing effort to combine <code class="language-plaintext highlighter-rouge">nix-env</code>, <code class="language-plaintext highlighter-rouge">nix-shell</code> and <code class="language-plaintext highlighter-rouge">nix-build</code>, and other <code class="language-plaintext highlighter-rouge">nix-...</code> commands into one singular <code class="language-plaintext highlighter-rouge">nix</code> command - which leads to this alternate configuration.</p>
+
+<p>While I am not familiar with <code class="language-plaintext highlighter-rouge">nix develop</code> yet, I will soon be digging more into it and replacing my <code class="language-plaintext highlighter-rouge">shell.nix</code> files with <code class="language-plaintext highlighter-rouge">nix develop</code> compatible versions.</p>
+
+<p>Luckily for <del>me</del> us, there is an example <code class="language-plaintext highlighter-rouge">nix develop</code> configuration file provided in the README for the rust-overlay project! While I may not know where this configuration is <em>actually</em> supposed to go… It is good to have. (Note to future self: Update this section when I understand)</p>
+<pre><code class="language-Nix"># www.github.com/oxalica/rust-overlay/README.md
+{
+	description = "a devShell example";
+
+	inputs = {
+		nixpks.url       = "github:NixOS/nixpkgs/nixos-unstable";
+		rust-overlay.url = "github:oxalica/rust-overlay";
+		flake-utils.url  = "github:numtide/flake-utils";
+	};
+
+	outputs = { self, nixpkgs, rust-overlay, flake-utils, ... }:
+		flake-utils.lib.eachDefaultSystem (system:
+			let
+				overlays = [ (import rust-overlay) ]; 
+				pkgs = import nixpkgs {
+					inherit system overlays;
+				};
+			in
+			with pkgs;
+			{
+				devShell.default = mkShell {
+					buildInputs = [
+						openssl
+						pkg-config
+						exa
+						fd
+						rust-bin.beta.latest.default
+					];
+					
+					shellHook = ``
+						alias ls=exa
+						alias find=fd
+					``;
+				};
+			}
+		);
+}
+</code></pre>
+<p>Please let me know if there was a typo, because I typed this out, instead of copy-and-pasting this and probably made a typo somewhere in that code block.</p>
+
+<h3 id="nix-shell">Nix-shell</h3>
+<p>For those of you who already know about <code class="language-plaintext highlighter-rouge">nix-shell</code>, you can skip this section and go to the solution below. For the rest of us who installed NixOs without knowing about <code class="language-plaintext highlighter-rouge">nix</code> and <code class="language-plaintext highlighter-rouge">nix-shell</code>, read on.</p>
+
+<p><strong>Note: Nix-shell is being replaced with <code class="language-plaintext highlighter-rouge">nix develop</code> <code class="language-plaintext highlighter-rouge">nix shell</code> and <code class="language-plaintext highlighter-rouge">nix run</code>.</strong></p>
+
+<p>I won’t claim to be anything more than a dabbler with <code class="language-plaintext highlighter-rouge">nix-shell</code>, as I haven’t started any projects with <code class="language-plaintext highlighter-rouge">nix-shell</code> in my tool belt yet, but I have retro-fitted several projects to work with <code class="language-plaintext highlighter-rouge">nix-shell</code> with minimal issues (once I got a basic <code class="language-plaintext highlighter-rouge">shell.nix</code> file working anyways).</p>
+
+<p>Nix is a shell environment much like <code class="language-plaintext highlighter-rouge">bash</code> or <code class="language-plaintext highlighter-rouge">zsh</code> and others, that can be installed on Windows, Mac, and Linux as a standalone application and project dependency manager. 
+It comes with a tool <code class="language-plaintext highlighter-rouge">nix-shell</code> that, when it is run, looks in the directory it was run in for a <code class="language-plaintext highlighter-rouge">default.nix</code> or <code class="language-plaintext highlighter-rouge">shell.nix</code> file that defines what should be available in the shell session, and installs it all for that shell environment.</p>
+
+<p>This means you can define a <code class="language-plaintext highlighter-rouge">shell.nix</code> on one machine with the exact packages and compiler versions, copy it to another computer, and have the exact same environment for your project - no hassle or forgetting packages involved! I don’t know about you, but that sounds pretty sweet to me! One file, and you can forget about that arcane list of python packages you installed globally - and no more polluting your global namespace either! (Yes, this is basically a python virtual environment, but with less hassle) Everything for the <code class="language-plaintext highlighter-rouge">nix-shell</code> is kept separate from the rest of the operating system, and is only used for that shell environment.</p>
+
+<p>But enough of a sales pitch. Here is what a minimal rust <code class="language-plaintext highlighter-rouge">shell.nix</code> should look like.</p>
+
+<p>In the root of your project, create a file and put this inside of it:</p>
+<pre><code class="language-Nix"># &lt;shell.nix&gt;
+{ pkgs ? import &lt;nixpkgs&gt; {}}:
+ 
+ let
+   rust_overlay = import (builtins.fetchTarball "https://github.com/oxalica/rust-overlay/archive/master.tar.gz");
+   pkgs = import &lt;nixpkgs&gt; { overlays = [ rust_overlay ]; };
+   ruststable = (pkgs.rust-bin.stable.default);
+ in
+ pkgs.mkShell {
+   buildInputs = with pkgs; [
+     ruststable # tell nix-shell to install our overlayed rust version defined above
+   ];
+ }
+</code></pre>
+<p>Now, whenever you want to work on your project, <code class="language-plaintext highlighter-rouge">cd</code> to the root, and run <code class="language-plaintext highlighter-rouge">nix-shell</code> to start the shell environment. The first run (and any run after a manual NixOs garbage collector run) will download and install any packages defined in the <code class="language-plaintext highlighter-rouge">shell.nix</code> file.</p>
+
+<p>Now when you open your IDE on this project from the <code class="language-plaintext highlighter-rouge">nix-shell</code>, rust-analyzer and <code class="language-plaintext highlighter-rouge">coc-rust-analyzer</code> will be able to find <code class="language-plaintext highlighter-rouge">rust-src</code> and will prompt you to download the latest version and work like normal.</p>
+
+<h4 id="tldr-example-shellnix">TL:DR Example <code class="language-plaintext highlighter-rouge">shell.nix</code></h4>
+<p>Here is the <code class="language-plaintext highlighter-rouge">shell.nix</code> template that I use for my rust projects. I simply copy this and edit it as required for each project.</p>
+<pre><code class="language-Nix"># `shell.nix` placed at the root of the project
+# and activated with `nix-shell`
+{ pkgs ? import &lt;nixpkgs&gt; {}}:
+ 
+ let
+   rust_overlay = import (builtins.fetchTarball "https://github.com/oxalica/rust-overlay/archive/master.tar.gz");
+   pkgs = import &lt;nixpkgs&gt; { overlays = [ rust_overlay ]; };
+   ruststable = (pkgs.latest.rustChannels.stable.default.override {
+       extensions = [
+         "rust-src" # required for rust-analyzer to work 
+         "rustfmt"  # allows you to run rustfmt in your nix-shell
+         "clippy"   # for more see https://doc.rust-lang.org/book/appendix-04-useful-development-tools.html section on Clippy
+       ];
+     });
+ in
+ pkgs.mkShell {
+   buildInputs = with pkgs; [ # you can also add any packages found in the official NixOs packages here to be included in the shell environment
+   
+     ruststable # install the overlay package we defined above
+   ];
+ 
+   RUST_BACKTRACE = 1; # Set this environment variable in the nix-shell
+ }
+</code></pre>
+<h3 id="options">Options</h3>
+<p>Taken from the Github page, you can select your toolchain like so:</p>
+<pre><code class="language-Nix">	rust-bin.stable.latest.default # Stable rust, default profile. If not sure, always choose this.
+	rust-bin.beta.latest.default   # Wanna test beta compiler.
+	rust-bin.stable.latest.minimal # I don't need anything other than rustc, cargo, rust-std. Bye rustfmt, clippy, etc.
+	rust-bin.beta.latest.minimal 
+</code></pre>
+
+<p>For more information on nightlys, selecting specific toolchain components, specific version of rust, specific <code class="language-plaintext highlighter-rouge">rustc</code> git revisions and more, <a href="https://github.com/oxalica/rust-overlay">See the project’s readme</a>.</p>
+
+<h3 id="in-closing">In closing</h3>
+<p>With the power of overlays, even package manager conflicts can be resolved with nothing more than a few lines of code. Also, try <code class="language-plaintext highlighter-rouge">nix-shell</code> if you haven’t for the true Nix experience.</p>
+
+<p>Until next time.</p>
+
