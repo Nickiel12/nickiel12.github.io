@@ -11,4 +11,9 @@ in
   stdenv.mkDerivation {
     name = "github-pages";
     buildInputs = [ env bundler ruby ];
+
+    shellHook = ''
+      exec ${env}/bin/jekyll serve --watch
+    '';
   }
+
