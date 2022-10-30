@@ -4,3 +4,6 @@
 
 layout: home
 ---
+Greetings! 
+
+This is currently fairly empty! and if it is the year 2025, probably abandonded. But here are some tips and tricks that I found quite useful and decided to share.
