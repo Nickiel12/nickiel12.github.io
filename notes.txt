@@ -1,3 +1,0 @@
-add gems with 
-
-nix-shell -p bundler --run 'bundle add <package>`
