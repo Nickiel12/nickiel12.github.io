@@ -33,23 +33,23 @@ If you are reading this section, you already have your configuration files set u
 ```Nix
 # <configuration.nix>, <flake.nix> or equivalent
 inputs = {
-	nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-	rust-overlay.url = "github:oxalica/rust-overlay";
+  nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  rust-overlay.url = "github:oxalica/rust-overlay";
 }
 
 outputs = { nixpkgs, rust-overlay, ... }: {
-	nixosConfigurations = {
-		hostname ... {
-			system ...
-			modules = [
-				...
-				({ pkgs, ... }: {
-					nixpkgs.overlays = [ rust-overlay.overlays.default ];
-					environment.systemPackages = [ pkgs.rust-bin.stable.latest.default ]; # install the latest stable rust default toolchain
-				})
-			];
-		};
-	};
+  nixosConfigurations = {
+    hostname ... {
+      system ...
+      modules = [
+        ...
+        ({ pkgs, ... }: {
+          nixpkgs.overlays = [ rust-overlay.overlays.default ];
+          environment.systemPackages = [ pkgs.rust-bin.stable.latest.default ]; # install the latest stable rust default toolchain
+        })
+      ];
+    };
+  };
 }
 ```
 
@@ -62,40 +62,40 @@ Luckily for ~~me~~ us, there is an example `nix develop` configuration file prov
 ```Nix
 # www.github.com/oxalica/rust-overlay/README.md
 {
-	description = "a devShell example";
+  description = "a devShell example";
 
-	inputs = {
-		nixpks.url       = "github:NixOS/nixpkgs/nixos-unstable";
-		rust-overlay.url = "github:oxalica/rust-overlay";
-		flake-utils.url  = "github:numtide/flake-utils";
-	};
+  inputs = {
+    nixpks.url       = "github:NixOS/nixpkgs/nixos-unstable";
+    rust-overlay.url = "github:oxalica/rust-overlay";
+    flake-utils.url  = "github:numtide/flake-utils";
+  };
 
-	outputs = { self, nixpkgs, rust-overlay, flake-utils, ... }:
-		flake-utils.lib.eachDefaultSystem (system:
-			let
-				overlays = [ (import rust-overlay) ]; 
-				pkgs = import nixpkgs {
-					inherit system overlays;
-				};
-			in
-			with pkgs;
-			{
-				devShell.default = mkShell {
-					buildInputs = [
-						openssl
-						pkg-config
-						exa
-						fd
-						rust-bin.beta.latest.default
-					];
-					
-					shellHook = ``
-						alias ls=exa
-						alias find=fd
-					``;
-				};
-			}
-		);
+  outputs = { self, nixpkgs, rust-overlay, flake-utils, ... }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        overlays = [ (import rust-overlay) ]; 
+        pkgs = import nixpkgs {
+          inherit system overlays;
+        };
+      in
+      with pkgs;
+      {
+        devShell.default = mkShell {
+          buildInputs = [
+            openssl
+            pkg-config
+            exa
+            fd
+            rust-bin.beta.latest.default
+          ];
+          
+          shellHook = ``
+            alias ls=exa
+            alias find=fd
+          ``;
+        };
+      }
+    );
 }
 ```
 Please let me know if there was a typo, because I typed this out, instead of copy-and-pasting this and probably made a typo somewhere in that code block.
@@ -122,11 +122,16 @@ In the root of your project, create a file and put this inside of it:
  let
    rust_overlay = import (builtins.fetchTarball "https://github.com/oxalica/rust-overlay/archive/master.tar.gz");
    pkgs = import <nixpkgs> { overlays = [ rust_overlay ]; };
-   ruststable = (pkgs.rust-bin.stable.default);
+   ruststable = (pkgs.rust-bin.stable.latest.default.override {
+        extensions = [ # Here we override the default items in the toolchain and add
+                       # a dep for rust-analyzer
+          "rust-src" # required for rust-analyzer
+        ];
+    });
  in
  pkgs.mkShell {
    buildInputs = with pkgs; [
-     ruststable # tell nix-shell to install our overlayed rust version defined above
+     ruststable
    ];
  }
 ```
@@ -134,40 +139,13 @@ Now, whenever you want to work on your project, `cd` to the root, and run `nix-s
 
 Now when you open your IDE on this project from the `nix-shell`, rust-analyzer and `coc-rust-analyzer` will be able to find `rust-src` and will prompt you to download the latest version and work like normal.
 
-#### TL:DR Example `shell.nix`
-Here is the `shell.nix` template that I use for my rust projects. I simply copy this and edit it as required for each project.
-```Nix
-# `shell.nix` placed at the root of the project
-# and activated with `nix-shell`
-{ pkgs ? import <nixpkgs> {}}:
- 
- let
-   rust_overlay = import (builtins.fetchTarball "https://github.com/oxalica/rust-overlay/archive/master.tar.gz");
-   pkgs = import <nixpkgs> { overlays = [ rust_overlay ]; };
-   ruststable = (pkgs.latest.rustChannels.stable.default.override {
-       extensions = [
-         "rust-src" # required for rust-analyzer to work 
-         "rustfmt"  # allows you to run rustfmt in your nix-shell
-         "clippy"   # for more see https://doc.rust-lang.org/book/appendix-04-useful-development-tools.html section on Clippy
-       ];
-     });
- in
- pkgs.mkShell {
-   buildInputs = with pkgs; [ # you can also add any packages found in the official NixOs packages here to be included in the shell environment
-   
-     ruststable # install the overlay package we defined above
-   ];
- 
-   RUST_BACKTRACE = 1; # Set this environment variable in the nix-shell
- }
-```
 ### Options
 Taken from the Github page, you can select your toolchain like so:
 ```Nix
-	rust-bin.stable.latest.default # Stable rust, default profile. If not sure, always choose this.
-	rust-bin.beta.latest.default   # Wanna test beta compiler.
-	rust-bin.stable.latest.minimal # I don't need anything other than rustc, cargo, rust-std. Bye rustfmt, clippy, etc.
-	rust-bin.beta.latest.minimal 
+  rust-bin.stable.latest.default # Stable rust, default profile. If not sure, always choose this.
+  rust-bin.beta.latest.default   # Wanna test beta compiler.
+  rust-bin.stable.latest.minimal # I don't need anything other than rustc, cargo, rust-std. Bye rustfmt, clippy, etc.
+  rust-bin.beta.latest.minimal 
 ```
 
 For more information on nightlys, selecting specific toolchain components, specific version of rust, specific `rustc` git revisions and more, [See the project's readme](https://github.com/oxalica/rust-overlay).
