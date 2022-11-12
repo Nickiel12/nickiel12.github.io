@@ -12,7 +12,7 @@ Vim is a cult classic text editor, and is a staple on any Linux distro for many.
 However! Not all is lost in these cases; You can still use Vim! You just need to manually install a few dependencies.
 
 ### Overview
-In this article I will cover how to install and set up Vim on a windows machine and configure it for use with rust development (`coc` and `rust-analyzer`).
+In this article I will cover how to install and set up Vim on a windows machine and configure it for use with Rust development (`coc` and `rust-analyzer`).
 
 ### TL:DR
 Install Vim, NodeJS, and vim-plug, then follow the same Vim configuration as Linux.
